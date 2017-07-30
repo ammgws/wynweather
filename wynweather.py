@@ -46,9 +46,10 @@ def main(config_file, bom_url, search_string, notify_user):
     if message:
         # Setup Hangouts bot instance, connect and send message
         hangouts = HangoutsClient(config_file)
-        if hangouts.connect(address=('talk.google.com', 5222),
-                            reattempt=True, use_tls=True):
+        if hangouts.connect():
             hangouts.process(block=False)
+        else:
+            raise RuntimeError('Unable to connect to Hangouts.')
         sleep(5)  # need time for Hangouts roster to update
         hangouts.send_to([notify_user, ], message)
         hangouts.disconnect(wait=True)
