@@ -1,20 +1,41 @@
 import os.path
 import requests
+from configparser import ConfigParser
+from pathlib import Path
 from time import sleep
-# Third party imports
+# Third party
 import click
 from hangoutsclient import HangoutsClient
 from lxml import etree
+
+APP_NAME = 'wynweather'
+
+
+def create_dir(ctx, param, directory):
+    if not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
+    return directory
 
 
 @click.command()
 @click.argument('bom_url')
 @click.argument('search_string')
 @click.argument('notify_user')
-@click.option('--config_file', '-c',
-              type=click.Path(exists=True), default=os.path.expanduser('~/.config/wynweather/config.ini'),
-              help='path to config file.')
-def main(config_file, bom_url, search_string, notify_user):
+@click.option(
+    '--config-path',
+    type=click.Path(),
+    default=os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), APP_NAME),
+    callback=create_dir,
+    help='Path to directory containing config file. Defaults to XDG config dir.',
+)
+@click.option(
+    '--cache-path',
+    type=click.Path(),
+    default=os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), APP_NAME),
+    callback=create_dir,
+    help='Path to directory to store logs and such. Defaults to XDG cache dir.',
+)
+def main(config_path, cache_path, bom_url, search_string, notify_user):
     """
     This script scrapes the weather warning feed given by BOM_URL, and if there are any current warning(s) that
     contain the keyword SEARCH_STRING, a message is sent to NOTIFY_USER using Google Hangouts.
@@ -25,7 +46,16 @@ def main(config_file, bom_url, search_string, notify_user):
 
     notify_user - JID or full name of the Hangouts user to notify. e.g. "xxx@public.talk.google.com" or "Itiot Gimp"
     """
-    message = None
+    config_file = os.path.join(config_path, 'config.ini')
+    config = ConfigParser()
+    config.read(config_file)
+    client_id = config.get('Hangouts', 'client_id')
+    client_secret = config.get('Hangouts', 'client_secret')
+    token_file = os.path.join(cache_path, 'hangouts_cached_token')
+    if not os.path.isfile(token_file):
+        Path(token_file).touch()
+
+    message = ''
 
     response = requests.get(bom_url)
     if response.status_code == 200:
@@ -44,8 +74,7 @@ def main(config_file, bom_url, search_string, notify_user):
             response.raise_for_status()
 
     if message:
-        # Setup Hangouts bot instance, connect and send message
-        hangouts = HangoutsClient(config_file)
+        hangouts = HangoutsClient(client_id, client_secret, token_file)
         if hangouts.connect():
             hangouts.process(block=False)
         else:
